@@ -1,0 +1,48 @@
+name: officebuddy
+description: A productivity and work tracking app
+version: 1.0.0+1
+environment:
+  sdk: '>=2.18.0 <4.0.0'
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  path_provider: ^2.1.4
+  provider: ^6.1.2
+  intl: ^0.19.0
+  pdf: ^3.10.8
+  printing: ^5.13.4
+  fl_chart: ^0.66.2
+  google_fonts: ^6.2.1
+  animations: ^2.0.11
+  lottie: ^3.1.2
+  shared_preferences: ^2.3.2
+  uuid: ^4.4.2
+  package_info_plus: ^8.0.2
+  share_plus: ^10.0.2
+  file_picker: ^8.1.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.0
+  hive_generator: ^2.0.0
+  build_runner: ^2.3.10
+  flutter_launcher_icons: ^0.13.1
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/images/logo.png"
+  min_sdk_android: 21 # android min sdk version
+
+# For information on the generic Dart part of this file, see the
+# following page: https://dart.dev/tools/pub/pubspec
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+    - assets/animations/
