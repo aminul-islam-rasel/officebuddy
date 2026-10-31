@@ -142,6 +142,17 @@ class WorkProvider with ChangeNotifier {
         .toList();
   }
 
+  List<WorkEntry> getEntriesForRange(DateTime start, DateTime end) {
+    // normalization to include the whole end day
+    final normalizedStart = DateTime(start.year, start.month, start.day);
+    final normalizedEnd = DateTime(end.year, end.month, end.day, 23, 59, 59);
+
+    return _workEntries.where((entry) {
+      return entry.date.isAfter(normalizedStart.subtract(const Duration(seconds: 1))) &&
+             entry.date.isBefore(normalizedEnd.add(const Duration(seconds: 1)));
+    }).toList();
+  }
+
   List<WorkEntry> searchEntries(String query) {
     if (query.isEmpty) return _workEntries;
 
@@ -163,10 +174,10 @@ class WorkProvider with ChangeNotifier {
       }
 
       // Generate PDF using existing PDF generator
-      final pdf = await PDFGenerator.generateMonthlyPDF(
+      final pdf = await PDFGenerator.generateRangePDF(
         entries: entries,
-        year: now.year,
-        month: now.month,
+        title: 'Monthly Work Report',
+        subtitle: '${getMonthName(now.month)} ${now.year}',
       );
 
       final bytes = await pdf.save();

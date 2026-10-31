@@ -105,7 +105,7 @@ class AnalyticsScreen extends StatelessWidget {
 
                       const SizedBox(height: 32),
 
-                      // Distribution Chart
+                      // Time Distribution Section
                       _buildSectionHeader('Time Allocation'),
                       const SizedBox(height: 16),
                       _buildDistributionChartCard(context, projectHours, totalHours),
@@ -426,12 +426,12 @@ class AnalyticsScreen extends StatelessWidget {
     );
   }
 
-  void _showPDFOptions(BuildContext context, WorkProvider provider) {
+  void _showPDFOptions(BuildContext screenContext, WorkProvider provider) {
     showModalBottomSheet(
-      context: context,
+      context: screenContext,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
-      builder: (context) => Container(
+      builder: (modalContext) => Container(
         padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -443,13 +443,18 @@ class AnalyticsScreen extends StatelessWidget {
             const Text('Choose a report format to export', style: TextStyle(color: Colors.grey)),
             const SizedBox(height: 24),
             _buildDialogTile(Icons.calendar_month_rounded, 'Monthly Summary', 'Complete log for current month', Colors.blue, () {
-              Navigator.pop(context);
-              _showMonthlyPDFOptions(context, provider);
+              Navigator.pop(modalContext);
+              _showMonthlyPDFOptions(screenContext, provider);
+            }),
+            const SizedBox(height: 12),
+            _buildDialogTile(Icons.date_range_rounded, 'Custom Date Range', 'Select start and end dates', Colors.orange, () {
+              Navigator.pop(modalContext);
+              _showDateRangePDFOptions(screenContext, provider);
             }),
             const SizedBox(height: 12),
             _buildDialogTile(Icons.folder_copy_rounded, 'Project-specific Logs', 'Detailed history for a single project', Colors.green, () {
-              Navigator.pop(context);
-              _showProjectPDFOptions(context, provider);
+              Navigator.pop(modalContext);
+              _showProjectPDFOptions(screenContext, provider);
             }),
           ],
         ),
@@ -473,25 +478,202 @@ class AnalyticsScreen extends StatelessWidget {
     );
   }
 
-  void _showMonthlyPDFOptions(BuildContext context, WorkProvider provider) {
-    final now = DateTime.now();
-    final entries = provider.getEntriesForMonth(now.year, now.month);
-    _showReportActionsDialog(context, 'Monthly Report', '${entries.length} entries for ${WorkProvider.getMonthName(now.month)}', () async {
-      await PDFGenerator.previewMonthlyReport(context: context, entries: entries, year: now.year, month: now.month);
-    }, () async {
-      await PDFGenerator.shareMonthlyReport(context: context, entries: entries, year: now.year, month: now.month);
-    });
-  }
+  void _showMonthlyPDFOptions(BuildContext screenContext, WorkProvider provider) {
+    int selectedMonth = DateTime.now().month;
+    int selectedYear = DateTime.now().year;
 
-  void _showProjectPDFOptions(BuildContext context, WorkProvider provider) {
-    final projectHours = provider.projectHours;
     showModalBottomSheet(
-      context: context,
+      context: screenContext,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
-      builder: (context) => Container(
+      builder: (modalContext) => StatefulBuilder(
+        builder: (modalContext, setModalState) {
+          final isDark = Theme.of(modalContext).brightness == Brightness.dark;
+          
+          return Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(modalContext).viewInsets.bottom),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2))),
+                  const SizedBox(height: 24),
+                  const Text('Select Month & Year', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 32),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: isDark ? const Color(0xFF2C2C2C) : Colors.grey[100],
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<int>(
+                              value: selectedMonth,
+                              isExpanded: true,
+                              dropdownColor: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+                              items: List.generate(12, (i) => DropdownMenuItem(
+                                value: i + 1,
+                                child: Text(DateFormat('MMMM').format(DateTime(2023, i + 1)), 
+                                  style: const TextStyle(fontWeight: FontWeight.bold)),
+                              )),
+                              onChanged: (v) => setModalState(() => selectedMonth = v!),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: isDark ? const Color(0xFF2C2C2C) : Colors.grey[100],
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<int>(
+                              value: selectedYear,
+                              isExpanded: true,
+                              dropdownColor: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+                              items: List.generate(5, (i) => DropdownMenuItem(
+                                value: DateTime.now().year - i,
+                                child: Text((DateTime.now().year - i).toString(), 
+                                  style: const TextStyle(fontWeight: FontWeight.bold)),
+                              )),
+                              onChanged: (v) => setModalState(() => selectedYear = v!),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 32),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 56,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        final entries = provider.getEntriesForMonth(selectedYear, selectedMonth);
+                        if (entries.isEmpty) {
+                          ScaffoldMessenger.of(modalContext).showSnackBar(
+                            const SnackBar(content: Text('No data found for this period'), behavior: SnackBarBehavior.floating),
+                          );
+                          return;
+                        }
+                        Navigator.pop(modalContext);
+                        Future.delayed(const Duration(milliseconds: 100), () {
+                          if (!screenContext.mounted) return;
+                          _showReportActionsDialog(
+                            screenContext, 
+                            '${WorkProvider.getMonthName(selectedMonth)} $selectedYear', 
+                            '${entries.length} work logs found', 
+                            (ctx) {
+                              Navigator.pop(ctx);
+                              PDFGenerator.previewMonthlyReport(context: screenContext, entries: entries, year: selectedYear, month: selectedMonth);
+                            },
+                            (ctx) {
+                              Navigator.pop(ctx);
+                              PDFGenerator.shareMonthlyReport(context: screenContext, entries: entries, year: selectedYear, month: selectedMonth);
+                            }
+                          );
+                        });
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Theme.of(modalContext).primaryColor,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      child: const Text('Generate PDF', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+      ),
+    );
+  }
+
+  void _showDateRangePDFOptions(BuildContext screenContext, WorkProvider provider) async {
+    final theme = Theme.of(screenContext);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final DateTimeRange? picked = await showDateRangePicker(
+      context: screenContext,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      initialDateRange: DateTimeRange(
+        start: DateTime.now().subtract(const Duration(days: 7)),
+        end: DateTime.now(),
+      ),
+      helpText: 'Select Report Period',
+      saveText: 'SAVE',
+      builder: (context, child) {
+        return Theme(
+          data: theme.copyWith(
+            appBarTheme: theme.appBarTheme.copyWith(
+              backgroundColor: theme.primaryColor,
+              foregroundColor: Colors.white,
+              iconTheme: const IconThemeData(color: Colors.white),
+            ),
+            colorScheme: theme.colorScheme.copyWith(
+              primary: theme.primaryColor,
+              onPrimary: Colors.white,
+              surface: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+              onSurface: isDark ? Colors.white : Colors.black,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null && screenContext.mounted) {
+      final entries = provider.getEntriesForRange(picked.start, picked.end);
+      
+      if (entries.isEmpty) {
+        ScaffoldMessenger.of(screenContext).showSnackBar(
+          const SnackBar(content: Text('No work logs found for selected range'), behavior: SnackBarBehavior.floating),
+        );
+        return;
+      }
+
+      final totalHours = entries.fold(0.0, (sum, item) => sum + item.workedHours);
+      final rangeStr = '${DateFormat('MMM dd').format(picked.start)} - ${DateFormat('MMM dd, y').format(picked.end)}';
+      final displaySubtitle = '$rangeStr\n${entries.length} entries found • Total: ${_formatHours(totalHours)}';
+
+      Future.delayed(const Duration(milliseconds: 200), () {
+        if (!screenContext.mounted) return;
+        _showReportActionsDialog(
+          screenContext,
+          'Custom Period Report',
+          displaySubtitle,
+          (modalCtx) {
+            Navigator.pop(modalCtx);
+            PDFGenerator.previewRangeReport(context: screenContext, entries: entries, title: 'Custom Period Report', subtitle: rangeStr);
+          },
+          (modalCtx) {
+            Navigator.pop(modalCtx);
+            PDFGenerator.shareRangeReport(context: screenContext, entries: entries, title: 'Custom Period Report', subtitle: rangeStr);
+          },
+        );
+      });
+    }
+  }
+
+  void _showProjectPDFOptions(BuildContext screenContext, WorkProvider provider) {
+    final projectHours = provider.projectHours;
+    showModalBottomSheet(
+      context: screenContext,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
+      builder: (modalContext) => Container(
         padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
-        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.7),
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(modalContext).size.height * 0.7),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -509,19 +691,27 @@ class AnalyticsScreen extends StatelessWidget {
                   final List<WorkEntry> entries = provider.getEntriesForProject(project);
                   return ListTile(
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    leading: CircleAvatar(
-                      backgroundColor: _getColor(index).withOpacity(0.1), 
-                      radius: 20, 
-                      child: Text(project[0].toUpperCase(), style: TextStyle(color: _getColor(index), fontWeight: FontWeight.bold))
+                    leading: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: _getColor(index).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(project[0].toUpperCase(), style: TextStyle(color: _getColor(index), fontWeight: FontWeight.bold)),
                     ),
                     title: Text(project, style: const TextStyle(fontWeight: FontWeight.w600)),
                     subtitle: Text('${entries.length} records'),
                     onTap: () {
-                      Navigator.pop(context);
-                      _showReportActionsDialog(context, project, '${entries.length} logs found', () async {
-                        await PDFGenerator.previewProjectReport(context: context, entries: entries, projectName: project);
-                      }, () async {
-                        await PDFGenerator.shareProjectReport(context: context, entries: entries, projectName: project);
+                      Navigator.pop(modalContext);
+                      Future.delayed(const Duration(milliseconds: 100), () {
+                        if (!screenContext.mounted) return;
+                        _showReportActionsDialog(screenContext, project, '${entries.length} logs found', (ctx) {
+                          Navigator.pop(ctx);
+                          PDFGenerator.previewProjectReport(context: screenContext, entries: entries, projectName: project);
+                        }, (ctx) {
+                          Navigator.pop(ctx);
+                          PDFGenerator.shareProjectReport(context: screenContext, entries: entries, projectName: project);
+                        });
                       });
                     },
                   );
@@ -534,11 +724,12 @@ class AnalyticsScreen extends StatelessWidget {
     );
   }
 
-  void _showReportActionsDialog(BuildContext context, String title, String subtitle, VoidCallback onPreview, VoidCallback onShare) {
+  void _showReportActionsDialog(BuildContext screenContext, String title, String subtitle, Function(BuildContext) onPreview, Function(BuildContext) onShare) {
     showModalBottomSheet(
-      context: context,
+      context: screenContext,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
-      builder: (context) => Container(
+      builder: (modalContext) => Container(
         padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -546,14 +737,14 @@ class AnalyticsScreen extends StatelessWidget {
             const Icon(Icons.picture_as_pdf_rounded, size: 48, color: Colors.redAccent),
             const SizedBox(height: 16),
             Text(title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 4),
-            Text(subtitle, style: const TextStyle(color: Colors.grey)),
+            const SizedBox(height: 12),
+            Text(subtitle, textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey, height: 1.5)),
             const SizedBox(height: 32),
             Row(
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: onPreview, 
+                    onPressed: () => onPreview(modalContext), 
                     icon: const Icon(Icons.visibility_rounded), 
                     label: const Text('Preview'),
                     style: OutlinedButton.styleFrom(
@@ -565,12 +756,12 @@ class AnalyticsScreen extends StatelessWidget {
                 const SizedBox(width: 16),
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: onShare, 
+                    onPressed: () => onShare(modalContext), 
                     icon: const Icon(Icons.share_rounded), 
                     label: const Text('Share PDF'),
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 16),
-                      backgroundColor: Theme.of(context).primaryColor,
+                      backgroundColor: Theme.of(modalContext).primaryColor,
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                       elevation: 0,

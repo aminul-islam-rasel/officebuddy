@@ -1,10 +1,9 @@
-import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:intl/intl.dart';
 import '../models/work_entry.dart';
 
 class PDFGenerator {
@@ -17,13 +16,13 @@ class PDFGenerator {
     return '${h}h ${m}m';
   }
 
-  static Future<pw.Document> generateMonthlyPDF({
+  static Future<pw.Document> generateRangePDF({
     required List<WorkEntry> entries,
-    required int year,
-    required int month,
+    required String title,
+    required String subtitle,
   }) async {
     final pdf = pw.Document();
-    final sortedEntries = entries.where((e) => e != null).toList();
+    final sortedEntries = List<WorkEntry>.from(entries);
 
     // Load logo
     pw.MemoryImage? logo;
@@ -42,7 +41,7 @@ class PDFGenerator {
           build: (pw.Context context) {
             return pw.Center(
               child: pw.Text(
-                'No work entries found for ${_getMonthName(month)} $year',
+                'No work entries found for $subtitle',
                 style: pw.TextStyle(fontSize: 18, color: PdfColors.grey600),
               ),
             );
@@ -56,24 +55,13 @@ class PDFGenerator {
     final projectBreakdown = <String, double>{};
 
     for (final entry in sortedEntries) {
-      final hours = entry.workedHours ?? 0.0;
+      final hours = entry.workedHours;
       totalWorkedHours += hours;
-      final projectName = entry.projectName ?? 'Unknown';
+      final projectName = entry.projectName;
       projectBreakdown[projectName] = (projectBreakdown[projectName] ?? 0) + hours;
     }
 
-    try {
-      sortedEntries.sort((a, b) {
-        final dateA = a.date;
-        final dateB = b.date;
-        if (dateA == null && dateB == null) return 0;
-        if (dateA == null) return 1;
-        if (dateB == null) return -1;
-        return dateA.compareTo(dateB);
-      });
-    } catch (e) {
-      debugPrint('Sort Error: $e');
-    }
+    sortedEntries.sort((a, b) => b.date.compareTo(a.date));
 
     pdf.addPage(
       pw.MultiPage(
@@ -102,11 +90,13 @@ class PDFGenerator {
                 pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Text('Office Buddy', style: pw.TextStyle(fontSize: 28, fontWeight: pw.FontWeight.bold, color: PdfColor.fromHex('#1976D2'))),
-                    pw.Text('Monthly Work Report', style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
+                    pw.Text('Office Buddy', 
+                      style: pw.TextStyle(fontSize: 28, fontWeight: pw.FontWeight.bold, color: PdfColor.fromHex('#1976D2'))),
+                    pw.Text(title, style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
                     pw.SizedBox(height: 8),
-                    pw.Text('${_getMonthName(month)} $year', style: const pw.TextStyle(fontSize: 16, color: PdfColors.grey700)),
-                    pw.Text('Generated on ${_formatDate(DateTime.now())}', style: const pw.TextStyle(fontSize: 12, color: PdfColors.grey600)),
+                    pw.Text(subtitle, style: const pw.TextStyle(fontSize: 16, color: PdfColors.grey700)),
+                    pw.Text('Generated on ${DateFormat('MMM dd, yyyy').format(DateTime.now())}', 
+                      style: const pw.TextStyle(fontSize: 12, color: PdfColors.grey600)),
                   ],
                 ),
                 if (logo != null)
@@ -121,7 +111,11 @@ class PDFGenerator {
           pw.SizedBox(height: 24),
           pw.Container(
             padding: const pw.EdgeInsets.all(16),
-            decoration: pw.BoxDecoration(color: PdfColors.blue50, borderRadius: pw.BorderRadius.circular(8), border: pw.Border.all(color: PdfColors.blue200)),
+            decoration: pw.BoxDecoration(
+              color: PdfColors.blue50,
+              borderRadius: pw.BorderRadius.circular(8),
+              border: pw.Border.all(color: PdfColors.blue200),
+            ),
             child: pw.Row(
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
               children: [
@@ -133,7 +127,6 @@ class PDFGenerator {
           ),
           pw.SizedBox(height: 24),
 
-          // New Project Breakdown Section
           pw.Text('Project Summary (Time Breakdown)', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 10),
           pw.Column(
@@ -178,10 +171,10 @@ class PDFGenerator {
               ...sortedEntries.map((entry) {
                 return pw.TableRow(
                   children: [
-                    _buildTableCell(_formatDate(entry.date)),
-                    _buildTableCell(entry.projectName ?? 'Unknown'),
-                    _buildTableCell(_formatHours(entry.workedHours ?? 0.0)),
-                    _buildTableCell(entry.details ?? '-', maxLines: 3),
+                    _buildTableCell(DateFormat('MMM dd, yyyy').format(entry.date)),
+                    _buildTableCell(entry.projectName),
+                    _buildTableCell(_formatHours(entry.workedHours)),
+                    _buildTableCell(entry.details.isEmpty ? '-' : entry.details, maxLines: 3),
                   ],
                 );
               }),
@@ -193,11 +186,26 @@ class PDFGenerator {
     return pdf;
   }
 
+  static Future<pw.Document> generateMonthlyPDF({
+    required List<WorkEntry> entries,
+    required int year,
+    required int month,
+  }) async {
+    const months = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    return generateRangePDF(
+      entries: entries,
+      title: 'Monthly Work Report',
+      subtitle: '${months[month - 1]} $year',
+    );
+  }
+
   static Future<pw.Document> _generateProjectPDF({required List<WorkEntry> entries, required String projectName}) async {
     final pdf = pw.Document();
-    final sortedEntries = entries.where((e) => e != null).toList();
+    final sortedEntries = List<WorkEntry>.from(entries);
 
-    // Load logo
     pw.MemoryImage? logo;
     try {
       final logoData = await rootBundle.load('assets/images/company logo.jpg');
@@ -213,7 +221,7 @@ class PDFGenerator {
 
     double totalHours = 0;
     for (var e in sortedEntries) {
-      totalHours += (e.workedHours ?? 0.0);
+      totalHours += e.workedHours;
     }
 
     pdf.addPage(
@@ -233,7 +241,8 @@ class PDFGenerator {
                 pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Text('Office Buddy', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, color: PdfColor.fromHex('#1976D2'))),
+                    pw.Text('Office Buddy', 
+                      style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, color: PdfColor.fromHex('#1976D2'))),
                     pw.Text('Project Report: $projectName', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
                     pw.SizedBox(height: 8),
                     pw.Text('Total Hours: ${_formatHours(totalHours)}', style: const pw.TextStyle(fontSize: 14)),
@@ -257,9 +266,9 @@ class PDFGenerator {
                 children: [_buildTableHeader('Date'), _buildTableHeader('Hours'), _buildTableHeader('Details')],
               ),
               ...sortedEntries.map((e) => pw.TableRow(children: [
-                _buildTableCell(_formatDate(e.date)),
-                _buildTableCell(_formatHours(e.workedHours ?? 0.0)),
-                _buildTableCell(e.details ?? '-', maxLines: 3),
+                _buildTableCell(DateFormat('MMM dd, yyyy').format(e.date)),
+                _buildTableCell(_formatHours(e.workedHours)),
+                _buildTableCell(e.details.isEmpty ? '-' : e.details, maxLines: 3),
               ])),
             ],
           ),
@@ -280,88 +289,109 @@ class PDFGenerator {
   }
 
   static pw.Widget _buildTableHeader(String text) {
-    return pw.Container(padding: const pw.EdgeInsets.all(8), child: pw.Text(text, style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)));
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(8),
+      child: pw.Text(text, style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+    );
   }
 
   static pw.Widget _buildTableCell(String text, {int? maxLines}) {
-    return pw.Container(padding: const pw.EdgeInsets.all(8), child: pw.Text(text, style: const pw.TextStyle(fontSize: 10), maxLines: maxLines));
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(8),
+      child: pw.Text(text, style: const pw.TextStyle(fontSize: 10), maxLines: maxLines),
+    );
   }
 
-  static Future<void> previewMonthlyReport({required BuildContext context, required List<WorkEntry> entries, required int year, required int month}) async {
+  static Future<void> previewRangeReport({
+    required BuildContext context,
+    required List<WorkEntry> entries,
+    required String title,
+    required String subtitle,
+  }) async {
+    try {
+      final pdf = await generateRangePDF(entries: entries, title: title, subtitle: subtitle);
+      final bytes = await pdf.save();
+      await Printing.layoutPdf(onLayout: (format) async => bytes, name: title.replaceAll(' ', '_'));
+    } catch (e) {
+      if (context.mounted) _showError(context, e);
+    }
+  }
+
+  static Future<void> shareRangeReport({
+    required BuildContext context,
+    required List<WorkEntry> entries,
+    required String title,
+    required String subtitle,
+  }) async {
+    try {
+      final pdf = await generateRangePDF(entries: entries, title: title, subtitle: subtitle);
+      final bytes = await pdf.save();
+      await Printing.sharePdf(bytes: bytes, filename: '${title.replaceAll(' ', '_')}.pdf');
+    } catch (e) {
+      if (context.mounted) _showError(context, e);
+    }
+  }
+
+  static Future<void> previewMonthlyReport({
+    required BuildContext context,
+    required List<WorkEntry> entries,
+    required int year,
+    required int month,
+  }) async {
     try {
       final pdf = await generateMonthlyPDF(entries: entries, year: year, month: month);
       final bytes = await pdf.save();
       await Printing.layoutPdf(onLayout: (format) async => bytes, name: 'Report_${year}_$month');
     } catch (e) {
-      _showError(context, e);
+      if (context.mounted) _showError(context, e);
     }
   }
 
-  static Future<void> saveMonthlyReport({required BuildContext context, required List<WorkEntry> entries, required int year, required int month}) async {
-    try {
-      final pdf = await generateMonthlyPDF(entries: entries, year: year, month: month);
-      final bytes = await pdf.save();
-      await Printing.layoutPdf(onLayout: (format) async => bytes, name: 'Report_${year}_$month');
-    } catch (e) {
-      _showError(context, e);
-    }
-  }
-
-  static Future<void> shareMonthlyReport({required BuildContext context, required List<WorkEntry> entries, required int year, required int month}) async {
+  static Future<void> shareMonthlyReport({
+    required BuildContext context,
+    required List<WorkEntry> entries,
+    required int year,
+    required int month,
+  }) async {
     try {
       final pdf = await generateMonthlyPDF(entries: entries, year: year, month: month);
       final bytes = await pdf.save();
       await Printing.sharePdf(bytes: bytes, filename: 'Report_${year}_$month.pdf');
     } catch (e) {
-      _showError(context, e);
+      if (context.mounted) _showError(context, e);
     }
   }
 
-  static Future<void> previewProjectReport({required BuildContext context, required List<WorkEntry> entries, required String projectName}) async {
+  static Future<void> previewProjectReport({
+    required BuildContext context,
+    required List<WorkEntry> entries,
+    required String projectName,
+  }) async {
     try {
       final pdf = await _generateProjectPDF(entries: entries, projectName: projectName);
       final bytes = await pdf.save();
       await Printing.layoutPdf(onLayout: (format) async => bytes, name: projectName);
     } catch (e) {
-      _showError(context, e);
+      if (context.mounted) _showError(context, e);
     }
   }
 
-  static Future<void> saveProjectReport({required BuildContext context, required List<WorkEntry> entries, required String projectName}) async {
-    try {
-      final pdf = await _generateProjectPDF(entries: entries, projectName: projectName);
-      final bytes = await pdf.save();
-      await Printing.layoutPdf(onLayout: (format) async => bytes, name: projectName);
-    } catch (e) {
-      _showError(context, e);
-    }
-  }
-
-  static Future<void> shareProjectReport({required BuildContext context, required List<WorkEntry> entries, required String projectName}) async {
+  static Future<void> shareProjectReport({
+    required BuildContext context,
+    required List<WorkEntry> entries,
+    required String projectName,
+  }) async {
     try {
       final pdf = await _generateProjectPDF(entries: entries, projectName: projectName);
       final bytes = await pdf.save();
       await Printing.sharePdf(bytes: bytes, filename: '$projectName.pdf');
     } catch (e) {
-      _showError(context, e);
+      if (context.mounted) _showError(context, e);
     }
   }
 
   static void _showError(BuildContext context, dynamic e) {
     debugPrint('PDF Error: $e');
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
-    }
-  }
-
-  static String _getMonthName(int month) {
-    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-    if (month < 1 || month > 12) return 'Unknown';
-    return months[month - 1];
-  }
-
-  static String _formatDate(DateTime? date) {
-    if (date == null) return '-';
-    return '${date.day}/${date.month}/${date.year}';
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
   }
 }
